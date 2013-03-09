@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>codementum.org - Babymaking</title>
+
+<style>
+  @import url(http://fonts.googleapis.com/css?family=Istok+Web);
+  @import url(http://fonts.googleapis.com/css?family=Oswald);
+
+  h1, h2 {
+    text-rendering: optimizeLegibility;
+  }
+
+  h1, h2, footer, #visTitle {
+    font-family: "Oswald", serif;
+    color: #000;
+  }
+
+  svg {
+    font-size: 13px;
+  }
+
+  body {
+    color: #333;
+    margin: 1em auto 4em auto;
+    width: 960px;
+    font-family: "Istok Web", sans-serif;
+    background-image:url(lib/debut_light.png); 
+    background-repeat:repeat;
+  }
+
+  body > p, h1 {
+    width: 720px;
+  }
+</style>
+
+<script src="http://d3js.org/d3.v3.js"></script>
+<script src="http://code.jquery.com/jquery-1.7.2.js"></script>
+
+<!-- google analytics -->
+<script>
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-31824206-1']);
+  _gaq.push(['_setDomainName', 'codementum.org']);
+  _gaq.push(['_trackPageview']);
+  
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+
+<h1>Babymaking: an interactive version of Matt Stiles' "How Common Is Your Birthday?"</h1>
+
+<p>Plan ahead, and avoid the labor room rush! This visualization shows that birthdates are not random by any means. For instance, check out how low the rankings are for the 13th of each month and near-absence of births on July 4. Hovering highlights the conception date in green, or you can click the conception box in the upper right to show approximate conception dates in the cells rather than birth dates.</p>
+
+<p>The overall design is based heavily off of Matt Stiles' post, <a href="http://thedailyviz.com/2012/05/12/how-common-is-your-birthday/">How Common is Your Birthday?</a>. I felt that interaction and showing conception dates could possibly lead to some interesting discoveries and mitigate confusion regarding rank vs. actual birth data. So far, I've (awkwardly) discovered that I was likely a product of my parents' anniversary weekend 25 years ago, since hovering over January 12 shows approximately April 7 as the conception date.</p>
+
+<p>The data comes from the <a href="http://www.nytimes.com/2006/12/19/business/20leonhardt-table.html">NYTimes</a>, and is a list of day, month, and rank (1-366) of how many births happen on that day. To get the conception dates, I subtracted <s>280</s> 266 days (the average human gestation period). <strong>Keep in mind that, unlike birth dates, the conception dates are approximate</strong>. The leap year is also always present. So it's more appropriate to look at general trends in conception instead of individual cells.</p>
+
+<p>You can find the code on <a href="http://github.com/codementum/babymaking">GitHub</a> (built with <a href="http://d3js.org">d3.js</a>) and me on Twitter (<a href="http://twitter.com/laneharrison">@laneharrison</a>).</p>
+
+<script>
+  var months = ['Jan', 'Feb', 'Mar', 'Apr', 
+    'May', 'Jun', 'Jul', 'Aug', 
+    'Sep', 'Oct', 'Nov', 'Dec'
+  ];
+  var days = d3.range(1, 32);
+
+  var w = 800;
+  var h = 900;
+  var svg = d3.select('body')
+    .append('svg')
+    .attr('width', w)
+    .attr('height', h)
+    .style('margin-left', '-25px');
+
+  var boxes; // used later for transitions
+  var dataset; 
+  var title; 
+
+  var labelPadTop = 100;
+  var labelPadLeft = 50;
+
+  var scale = d3.scale.linear()
+    .domain([1, 366])
+    .range(['#5E3C99', 'white']);
+
+  // used later for marking the scale according to data
+  var markerPos = d3.scale.linear()
+    .domain([1, 366])
+    .range([(h/2) - 150 + 300, (h/2) - 150]);
+
+  // scale for getting 9 months back
+  function nineMonthsBack(startMonth, startDay){
+    var d = new Date();
+    d.setMonth(startMonth);
+    d.setDate(startDay);
+    var nd = new Date(d.getTime() - (1000 * 60 * 60 * 24 * 266)); // 266 days in a pregnancy!
+    return [nd.getDate(), (nd.getMonth())];
+  }
+
+  function nineMonthsForward(startMonth, startDay){
+    var d = new Date();
+    d.setMonth(startMonth);
+    d.setDate(startDay);
+    var nd = new Date(d.getTime() + (1000 * 60 * 60 * 24 * 266)); // 266 days in a pregnancy!
+    return [nd.getDate(), (nd.getMonth())];
+  }
+
+  // find specific rank for Day and Month
+  function getRank(day, month){
+    var rank;
+    $.each(dataset, function(key, d) {
+      if (d.Day == day && (d.Month-1) == month){
+        rank = d.Rank;
+      }
+    });
+    return rank;
+  }
+
+  function moveMarker(pos){
+    svg.select('#scaleMarker')
+      .attr('y', markerPos(pos));
+    svg.select('#scaleMarkerText')
+      .attr('y', markerPos(pos)+5)
+      .text(pos);
+  }
+
+  // add buttons for conception vs. birth
+  svg.append('rect')
+    .attr('id', 'conceptionButton')
+    .attr('width', '20')
+    .attr('height', '20')
+    .attr('y', 25)
+    .attr('x', w-90)
+    .attr('stroke', 'gray')
+    .attr('fill', '#7FBF7B')
+    .on('mousedown', function(){
+      d3.select(this).attr('stroke', '#5E3C99');
+      d3.select(this).attr('stroke-width', '3px');
+      d3.select('#birthButton').attr('stroke', 'gray');
+      d3.select('#birthButton').attr('stroke-width', '1px');
+      title.text('Conception frequencies 1973-1999');
+      // fill based on data nine months back
+      boxes.transition()
+        .delay(100)
+        .duration(1000)
+        .attr('fill', function(d){
+          var nmb = nineMonthsForward(d.Month-1, d.Day);
+          return scale(getRank(nmb[0], nmb[1]));
+      });
+      // TODO also change mouseover
+      boxes.on('mouseover', function(d, i){ 
+        d3.select(this).attr('stroke-width', '3px');
+        d3.select(this).attr('stroke', '#7FBF7B');
+        var nmb = nineMonthsForward(d.Month-1, d.Day);
+        moveMarker(getRank(nmb[0], nmb[1]));
+
+        //  use result to highlight
+        var nmb = nineMonthsForward(d.Month-1, d.Day);
+        d3.select('#r-'+nmb[0]+'-'+(nmb[1]+1))
+            .attr('stroke-width', '5px')
+            .attr('stroke', '#E66101');
+      })
+      .on('mouseout', function(d, i){ 
+        d3.select(this).attr('stroke-width', '1px');
+        d3.select(this).attr('stroke', 'gray');
+
+        // reset ninemonthsback
+        var nmb = nineMonthsForward(d.Month-1, d.Day);
+        d3.select('#r-'+nmb[0]+'-'+(nmb[1]+1))
+          .attr('stroke-width', '1px')
+          .attr('stroke', 'gray');
+      });
+      boxes.selectAll('title')
+        .text(function(d){ 
+          var nmb = nineMonthsForward(d.Month-1, d.Day);
+          var str = '';
+          str = 'conception: '+d.Day+'-'+months[d.Month-1]+', c-rank: '+getRank(nmb[0], nmb[1])+' birth: '+nmb[0]+'-'+months[nmb[1]]+', rank: '+d.Rank;
+          return str; 
+        });
+    });
+
+  // conception label
+  svg.append('text')
+    .attr('y', 38)
+    .attr('x', w-65)
+    .text('conception');
+
+
+  // birth button
+  svg.append('rect')
+    .attr('id', 'birthButton')
+    .attr('width', '20')
+    .attr('height', '20')
+    .attr('y', 50)
+    .attr('x', w-90)
+    .attr('stroke', '#5E3C99')
+    .attr('stroke-width', '3px')
+    .attr('fill', '#E66101') // selected by default
+    .on('mousedown', function(){
+      d3.select(this).attr('stroke', '#5E3C99');
+      d3.select(this).attr('stroke-width', '3px');
+      d3.select('#conceptionButton').attr('stroke', 'gray');
+      d3.select('#conceptionButton').attr('stroke-width', '1px');
+      title.text('Birthdate frequencies 1973-1999');
+      
+      s.transition()
+        .delay(100)
+        .duration(1000)
+        .attr('fill', function(d){
+          return scale(d.Rank);
+        });
+
+      //also change mouseover
+      boxes.on('mouseover', function(d, i){ 
+        d3.select(this).attr('stroke-width', '3px');
+        d3.select(this).attr('stroke', '#E66101');
+        moveMarker(d.Rank);
+
+        //  use result to highlight
+        var nmb = nineMonthsBack(d.Month-1, d.Day);
+        d3.select('#r-'+nmb[0]+'-'+(nmb[1]+1))
+          .attr('stroke-width', '5px')
+          .attr('stroke', '#7FBF7B');
+
+      }).on('mouseout', function(d, i){ 
+        d3.select(this).attr('stroke-width', '1px');
+        d3.select(this).attr('stroke', 'gray');
+
+        // reset ninemonthsback
+        var nmb = nineMonthsBack(d.Month-1, d.Day);
+        d3.select('#r-'+nmb[0]+'-'+(nmb[1]+1))
+          .attr('stroke-width', '1px')
+          .attr('stroke', 'gray');
+      });            
+
+      boxes.selectAll('title')
+        .text(function(d){ 
+          var nmb = nineMonthsBack(d.Month-1, d.Day);
+          var str = '';
+          str = 'birth: '+d.Day+'-'+months[d.Month-1]+', rank: '+d.Rank+', conception: '+nmb[0]+'-'+months[nmb[1]]+', c-rank: '+getRank(nmb[0], nmb[1]);
+          return str; 
+        });
+    });
+
+  // births label
+  svg.append('text')
+    .attr('y', 63)
+    .attr('x', w-65)
+    .text('births');
+                  
+
+d3.json('ranks.json', function(json){
+  // set dataset for later transitions
+  dataset = json;
+
+  // boxes
+  boxes = svg.selectAll('rect.r')
+    .data(json)
+    .enter()
+    .append('rect')
+    .attr('id', function(d){return 'r-'+d.Day+'-'+d.Month;})
+    .attr('stroke', 'gray')
+    .attr('fill', function(d){return scale(d.Rank);})
+    .attr('width', '50')
+    .attr('height', '20')
+    .attr('y', function(d, i){ return labelPadTop + (d.Day-1)*25; })
+    .attr('x', function(d, i){ return labelPadLeft + (d.Month-1)*55; })
+    .on('mouseover', function(d, i){ 
+      d3.select(this).attr('stroke-width', '3px');
+      d3.select(this).attr('stroke', '#E66101');
+      moveMarker(d.Rank);
+
+      //  use result to highlight
+      var nmb = nineMonthsBack(d.Month-1, d.Day);
+      d3.select('#r-'+nmb[0]+'-'+(nmb[1]+1))
+        .attr('stroke-width', '5px')
+        .attr('stroke', '#7FBF7B');
+    })
+    .on('mouseout', function(d, i){ 
+      d3.select(this).attr('stroke-width', '1px');
+      d3.select(this).attr('stroke', 'gray');
+
+      // reset ninemonthsback
+      var nmb = nineMonthsBack(d.Month-1, d.Day);
+      d3.select('#r-'+nmb[0]+'-'+(nmb[1]+1))
+        .attr('stroke-width', '1px')
+        .attr('stroke', 'gray');
+    });
+
+  boxes.append('title')
+    .text(function(d){ 
+      var nmb = nineMonthsBack(d.Month-1, d.Day);
+      var str = '';
+      str = 'birth: '+d.Day+'-'+months[d.Month-1]+', rank: '+d.Rank+', conception: '+nmb[0]+'-'+months[nmb[1]]+', c-rank: '+getRank(nmb[0], nmb[1]);
+      return str; 
+    });
+
+  // month labels
+  svg.selectAll('text.monthLabels')
+    .data(months)
+    .enter()
+    .append('text')
+    .attr('id', 'monthLabels')
+    .attr('y', (labelPadTop-10))
+    .attr('x', function(d, i){ return 10 + labelPadLeft + i*55; })
+    .text(function(d){return d;});
+
+  // day labels
+  svg.selectAll('text.dayLabels')
+    .data(days)
+    .enter()
+    .append('text')
+    .attr('id', 'dayLabels')
+    .attr('y', function(d, i){ return 15 + labelPadTop + i*25; })
+    .attr('x', (labelPadLeft - 5))
+    .attr("text-anchor", "end") // text-align: right
+    .text(function(d){return d;});
+
+  // title label
+  title = svg.append('text')
+    .attr('id', 'visTitle')
+    .attr('y', 40)
+    .attr('x', (w/2))
+    .style('font-size', '32px')
+    .style("text-anchor", "middle")
+    .text('Birthdate frequencies 1973-1999');
+        
+
+  // append a rect + lineargradient for scale
+  var gradient = svg.append("defs").append("linearGradient")
+    .attr("id", "gradient")
+    .attr("x2", "0%")
+    .attr("y2", "100%");
+
+  gradient.append("svg:stop")
+    .attr("offset", "0%")
+    .attr("stop-color", "white")
+    .attr("stop-opacity", .5);
+
+  gradient.append("svg:stop")
+    .attr("offset", "100%")
+    .attr("stop-color", "#5E3C99")
+    .attr("stop-opacity", 1);
+
+  svg.append('rect')
+    .attr('id', 'scale')
+    .attr('width', '30')
+    .attr('height', '300')
+    .attr('y', (h/2) - 150)
+    .attr('x', w-60)
+    .attr('stroke', 'gray')
+    .attr('fill', 'url(#gradient)');
+
+  svg.append('text')
+    .attr('id', 'scaleLabelTop')
+    .attr('y', (h/2) - 160)
+    .attr('x', w-58)
+    .text('less');
+
+  svg.append('text')
+    .attr('id', 'scaleLabelBottom')
+    .attr('y', (h/2) + 165)
+    .attr('x', w-60)
+    .text('more');
+
+  // rect/line to show point on scale based on mouseover
+  svg.append('rect')
+    .attr('id', 'scaleMarker')
+    .attr('width', '30')
+    .attr('height', '2')
+    .attr('y', (h/2))
+    .attr('x', w-60)
+    .attr('stroke', '#252525')
+    .attr('fill', '#252525');
+
+  svg.append('text')
+    .attr('id', 'scaleMarkerText')
+    .attr('y', (h/2)+5)
+    .attr('x', w-27)
+    .attr("text-anchor", "start")
+    .text('rank');                    
+
+});
+</script>
+
+<footer>
+  <a href="../" rel="author">Lane Harrison</a>
+</footer>
