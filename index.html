@@ -5,7 +5,7 @@
 <style>
   @import url(http://fonts.googleapis.com/css?family=Istok+Web);
   @import url(http://fonts.googleapis.com/css?family=Oswald);
-  @import url(lib/main.css);
+  @import url(http://codementum.org/lib/main.css);
 
   #visTitle {
     font-family: "Oswald", serif;
@@ -34,7 +34,10 @@
   })();
 </script>
 
-<h1>Babymaking: an interactive version of Matt Stiles' "How Common Is Your Birthday?"</h1>
+<h1>
+  <a href="http://codementum.org" id="codementumIcon"></a>
+  Babymaking: an interactive version of Matt Stiles' "How Common Is Your Birthday?"
+</h1>
 
 <p>Plan ahead, and avoid the labor room rush! This visualization shows that birthdates are not random by any means. For instance, check out how low the rankings are for the 13th of each month and near-absence of births on July 4. Hovering highlights the conception date in green, or you can click the conception box in the upper right to show approximate conception dates in the cells rather than birth dates.</p>
 
@@ -43,6 +46,8 @@
 <p>The data comes from the <a href="http://www.nytimes.com/2006/12/19/business/20leonhardt-table.html">NYTimes</a>, and is a list of day, month, and rank (1-366) of how many births happen on that day. To get the conception dates, I subtracted <s>280</s> 266 days (the average human gestation period). <strong>Keep in mind that, unlike birth dates, the conception dates are approximate</strong>. The leap year is also always present. So it's more appropriate to look at general trends in conception instead of individual cells.</p>
 
 <p>You can find the code on <a href="http://github.com/codementum/babymaking">GitHub</a> (built with <a href="http://d3js.org">d3.js</a>) and me on Twitter (<a href="http://twitter.com/laneharrison">@laneharrison</a>).</p>
+
+<script src="http://codementum.org/lib/codementumIcon.js"></script>
 
 <script>
   var months = ['Jan', 'Feb', 'Mar', 'Apr', 
